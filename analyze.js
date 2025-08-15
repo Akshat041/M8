@@ -19,23 +19,85 @@ if (events.length === 0) {
   process.exit(1);
 }
 
-// Step 2: Calculate totals
-const totals = {};
+// Group by habit
+const habits = {};
 events.forEach((e) => {
-  totals[e.habit] = (totals[e.habit] || 0) + e.minutes;
+  if (!habits[e.habit]) habits[e.habit] = [];
+  habits[e.habit].push({
+    date: e.date.split("T")[0], // only keep YYYY-MM-DD
+    minutes: e.minutes,
+  });
 });
 
-// Step 3: Display totals
-console.log("📊 Total minutes by habit:");
-for (let habit in totals) {
-  console.log(`- ${habit}: ${totals[habit]} min`);
+// Helper: get unique dates sorted
+function getSortedDates(entries) {
+  const dates = [...new Set(entries.map((e) => e.date))];
+  return dates.sort();
 }
 
-// Step 4: Find weakest habit
-const sortedHabits = Object.entries(totals).sort((a, b) => a[1] - b[1]);
-const weakestHabit = sortedHabits[0][0];
+// Helper: calculate streak
+function calcStreak(entries, target) {
+  const dates = getSortedDates(entries);
+  let streak = 0;
+  let today = new Date();
 
-console.log(`\n🪫 Weakest habit: ${weakestHabit}`);
+  for (let i = dates.length - 1; i >= 0; i--) {
+    let dateObj = new Date(dates[i]);
+    let diffDays = Math.floor((today - dateObj) / (1000 * 60 * 60 * 24));
+    if (diffDays !== dates.length - 1 - i) break; // break if gap
 
-// Step 5: Suggest tiny action
-console.log(`💡 Tiny Action: Do +5 minutes of ${weakestHabit} today.`);
+    // Sum minutes for that date
+    const totalForDate = entries
+      .filter((e) => e.date === dates[i])
+      .reduce((sum, e) => sum + e.minutes, 0);
+
+    if (totalForDate >= target) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+// Helper: 7-day average
+function calc7DayAverage(entries) {
+  const today = new Date();
+  const last7Days = [];
+
+  for (let i = 0; i < 7; i++) {
+    let dateStr = new Date(today - i * 86400000).toISOString().split("T")[0];
+    let total = entries
+      .filter((e) => e.date === dateStr)
+      .reduce((sum, e) => sum + e.minutes, 0);
+    last7Days.push(total);
+  }
+
+  const avg = last7Days.reduce((a, b) => a + b, 0) / 7;
+  return avg.toFixed(1);
+}
+
+// Show analysis
+console.log("📊 Habit Stats:");
+for (let habit in habits) {
+  const total = habits[habit].reduce((sum, e) => sum + e.minutes, 0);
+  console.log(`\n${habit.toUpperCase()}:`);
+  console.log(`  Total: ${total} min`);
+  console.log(
+    `  Streak: ${calcStreak(habits[habit], 20)} days (target 20 min)`
+  );
+  console.log(`  7-Day Average: ${calc7DayAverage(habits[habit])} min/day`);
+}
+
+// Find weakest habit by total
+const totals = Object.entries(habits).map(([habit, entries]) => {
+  const total = entries.reduce((sum, e) => sum + e.minutes, 0);
+  return [habit, total];
+});
+totals.sort((a, b) => a[1] - b[1]);
+
+if (totals.length > 0) {
+  const weakestHabit = totals[0][0];
+  console.log(`\n🪫 Weakest habit: ${weakestHabit}`);
+  console.log(`💡 Tiny Action: Do +5 minutes of ${weakestHabit} today.`);
+}
